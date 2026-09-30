@@ -8,6 +8,10 @@ The menu-bar badge shows the remaining 5-hour and weekly usage percentages. Hove
 
 ![Codex Usage Status menu-bar badge showing remaining 5-hour and weekly usage](docs/assets/menu-bar-badge.png)
 
+![Codex Usage Status hover card with reset count, reset times, and next refresh](docs/assets/hover-card-sample.png)
+
+*Illustrative preview with fictional sample values; it does not show a real account's quota.*
+
 The reset count is the separate number of reset credits reported by Codex (`rateLimitResetCredits.availableCount`). It is not another usage percentage and may be unavailable if Codex does not return it.
 
 ## Privacy and safety
