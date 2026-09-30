@@ -3,6 +3,11 @@ import Foundation
 struct RateLimitsResponse: Decodable, Sendable {
     let rateLimits: RateLimitSnapshot?
     let rateLimitsByLimitId: [String: RateLimitSnapshot]?
+    let rateLimitResetCredits: RateLimitResetCredits?
+}
+
+struct RateLimitResetCredits: Decodable, Sendable {
+    let availableCount: Int?
 }
 
 struct RateLimitSnapshot: Decodable, Sendable {
@@ -22,6 +27,7 @@ struct UsageSummary: Sendable {
     let planType: String?
     let fiveHour: UsageWindow
     let weekly: UsageWindow
+    let availableResetCount: Int?
 
     init(response: RateLimitsResponse) throws {
         let snapshot = response.rateLimitsByLimitId?["codex"]
@@ -43,6 +49,7 @@ struct UsageSummary: Sendable {
         self.planType = snapshot.planType
         self.fiveHour = fiveHour
         self.weekly = weekly
+        availableResetCount = response.rateLimitResetCredits?.availableCount.flatMap { $0 >= 0 ? $0 : nil }
     }
 
     var menuTitle: String {

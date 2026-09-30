@@ -3,3 +3,14 @@ node_modules/
 dist/
 macos/CodexUsageStatus/.build/
 *.log
+.build/
+build/
+backups/
+outputs/
+__pycache__/
+*.py[cod]
+menubar-sample.txt
+*.app/
+*.dSYM/
+*.zip
+.swiftpm/

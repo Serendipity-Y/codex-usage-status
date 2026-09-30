@@ -20,6 +20,10 @@ Codex itself owns authentication. This companion app receives the usage percenta
 - It does not modify the official Codex app bundle.
 - It does not bypass, increase, reset, purchase, or route around usage limits.
 
+## Optional ChatGPT lifecycle helper
+
+When installed, the helper observes macOS's running-application list and compares bundle paths to the configured ChatGPT and quota apps. It uses process identifiers only to distinguish multiple running instances and decide when to start or quit the quota app. It does not inspect windows, documents, or chat content. Lifecycle events and errors are written to local files under `~/Library/Logs/CodexUsageStatusLifecycle`; this project does not upload those logs.
+
 ## What leaves your Mac
 
 This app does not upload usage data to this project, to the author, or to any third-party service.

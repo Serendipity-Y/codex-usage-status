@@ -1,137 +1,84 @@
 # Codex Usage Status
 
-Small macOS menu-bar app for showing Codex usage at a glance.
+An unofficial macOS menu-bar companion for viewing Codex usage at a glance. It adds a compact quota badge, a hover card with reset times and remaining reset opportunities, and an optional helper that keeps the badge open only while the ChatGPT desktop app is running.
 
-![Codex Usage Status menu-bar badge](docs/assets/menu-bar-badge.png)
+This is a community project and is not affiliated with or endorsed by OpenAI.
 
-It displays usage as a compact side-labeled double-ring badge:
+The menu-bar badge shows the remaining 5-hour and weekly usage percentages. Hover over it to see the available reset count, 5-hour and weekly reset times, and the next data refresh. Click the badge to refresh, change the display style, open settings, or quit.
 
-- left ring group: 5-hour remaining percentage
-- right ring group: weekly remaining percentage
-- ring progress: remaining quota status
-- ring center number: remaining percentage
-- side labels: `5H` and `7D`
+## Privacy and safety
 
-The menu-bar badge is the primary interface. Clicking it only exposes the necessary actions: Refresh, Settings, and Quit.
+- Usage comes from the local Codex app-server method `account/rateLimits/read`.
+- The app does not read Codex credential files, browser cookies, sessions, OAuth credentials, or API keys.
+- The optional lifecycle helper watches macOS's running-app list and matches the configured ChatGPT app bundle path. It does not inspect chat content or screenshots.
+- This project does not upload usage data or send telemetry to its maintainers.
+- It does not change usage limits or modify the ChatGPT or Codex app bundles.
 
-Double Ring is the default display style. It uses no capsule background, and each label sits beside its own ring instead of inside the ring. A larger accessibility-oriented style is available from Display Style > Large Readout. Large Readout keeps the same two values visible in the menu bar, but prioritizes even larger readable numbers with weak `5H` / `7D` labels and thin status lines.
-
-## Safety model
-
-This app only calls the official local Codex app-server method `account/rateLimits/read`. It does not modify Codex, does not read `~/.codex/auth.json`, and does not handle tokens, cookies, sessions, OAuth credentials, API keys, or browser data.
-
-See [PRIVACY.md](PRIVACY.md) for the user-facing privacy summary and [SECURITY.md](SECURITY.md) for the hard engineering boundaries.
+See [PRIVACY.md](PRIVACY.md) and [SECURITY.md](SECURITY.md) for details. This app depends on a local app-server interface and app bundle paths that may change in future ChatGPT or Codex releases.
 
 ## Requirements
 
 - macOS 13 or later
-- Codex desktop installed at `/Applications/Codex.app`
-- You are already signed in to Codex
-
-## Install from release
-
-1. Download the latest release ZIP for your Mac from [GitHub Releases](https://github.com/tollenceld/codex-usage-status/releases/latest):
-   - Apple Silicon: `CodexUsageStatus-<version>-macos-arm64.zip`
-   - Intel: `CodexUsageStatus-<version>-macos-x86_64.zip`
-2. Unzip it.
-3. Move `CodexUsageStatus.app` to `/Applications`.
-4. Open `CodexUsageStatus.app`.
-
-The app is a menu-bar-only app, so it does not appear in the Dock. Optional: add it to macOS System Settings > General > Login Items.
-
-Unsigned GitHub builds may trigger macOS Gatekeeper warnings. For a public polished release, sign with an Apple Developer ID and notarize the app.
-
-## Known limitations
-
-- Codex desktop must be installed at `/Applications/Codex.app`, unless `CODEX_BIN` is set for development.
-- You must already be signed in to Codex.
-- Live usage depends on Codex's local app-server method `account/rateLimits/read`; if that local interface changes, this app may need an update.
-- The app shows usage only. It cannot buy credits, switch accounts, retry login, or change limits.
-- Local builds are ad-hoc signed by default. Downloaded release ZIPs may show Gatekeeper warnings until a notarized build is available.
-
-## Build from source
-
-For source builds:
-
+- ChatGPT desktop installed at `/Applications/ChatGPT.app` to use the automatic start/quit helper
+- The Codex executable bundled with ChatGPT, or a standalone Codex app at `/Applications/Codex.app`
 - Swift toolchain / Xcode Command Line Tools
-- Node.js 20 or later for tests and the optional CLI probe
+- Node.js 20 or later for the CLI and JavaScript tests
+
+If ChatGPT or Codex is installed at a different path, set `CODEX_BIN` when launching the app or pass paths to the lifecycle installer.
+
+## Build and install
 
 ```sh
 npm test
+swift test --package-path macos/CodexUsageStatus
 npm run build:macos
-npm run start:macos
-```
-
-The build script defaults to the Mac's hardware architecture. On Apple Silicon this creates an `arm64` app, even if Node.js is running under Rosetta. To build a specific architecture:
-
-```sh
-BUILD_ARCH=arm64 npm run build:macos
-BUILD_ARCH=x86_64 npm run build:macos
-```
-
-To install into `/Applications`:
-
-```sh
 npm run install:macos
 ```
 
-The app is a menu-bar-only app, so it does not appear in the Dock.
+The app is menu-bar-only and does not appear in the Dock. To run it manually, open `CodexUsageStatus.app` from `/Applications`. On Apple Silicon the build script selects `arm64`; on Intel it selects `x86_64`. Override with `BUILD_ARCH=arm64` or `BUILD_ARCH=x86_64`.
 
-To change the menu-bar display, click the badge and choose Display Style:
+Local builds are ad-hoc signed. The source repository does not promise signed or notarized release downloads; macOS may show a Gatekeeper warning for an app built or downloaded without Developer ID signing and notarization.
 
-- Double Ring: compact default with side labels and circular quota indicators.
-- Large Readout: larger numbers with subtle status lines for easier reading.
+## Optional ChatGPT start/quit behavior
 
-The default refresh interval is 120 seconds, with a 60-second minimum. To override it:
+After building and installing the app in `/Applications`, install the per-user background listener:
 
 ```sh
-CODEX_USAGE_REFRESH_SECONDS=180 npm run start:macos
+python3 lifecycle/install.py install
+python3 lifecycle/install.py check
 ```
+
+By default it watches `/Applications/ChatGPT.app`, launches `/Applications/CodexUsageStatus.app` when ChatGPT starts, and quits the badge after the last ChatGPT process exits. Closing a ChatGPT window does not quit the app while its process remains running. The listener starts at user login, but the quota badge only starts when ChatGPT is running.
+
+To use non-default locations:
+
+```sh
+python3 lifecycle/install.py install \
+  --host-app "/Applications/ChatGPT.app" \
+  --quota-app "/Applications/CodexUsageStatus.app" \
+  --codex-bin "/path/to/codex"
+```
+
+Disable the listener with `python3 lifecycle/install.py disable`. This leaves the quota app installed so it can be started manually.
 
 ## CLI probe
 
-The CLI uses the same safe app-server source and is useful for debugging:
+The CLI uses the same local usage source and can help diagnose app-server responses:
 
 ```sh
-npm run usage
-npm run usage:json
+CODEX_BIN="/path/to/codex" npm run usage
+CODEX_BIN="/path/to/codex" npm run usage:json
 ```
 
-The CLI output remains text-based for logs and tests even though the macOS menu-bar UI is a graphic badge.
-
-If your Codex binary lives somewhere else:
-
-```sh
-CODEX_BIN=/path/to/codex npm run usage
-```
-
-## Release package
+## Package builds
 
 ```sh
 npm run package:macos
 npm run package:macos:all
 ```
 
-`package:macos` creates a zipped `.app` for the current Mac architecture. `package:macos:all` creates both `arm64` and `x86_64` ZIPs plus `SHA256SUMS.txt` in `dist/`.
+The first command creates a ZIP for the current Mac architecture. The second creates architecture-specific Apple Silicon and Intel ZIPs plus `SHA256SUMS.txt` in `dist/`. These commands package the app; they do not publish a GitHub release.
 
-Release ZIPs are architecture-specific:
+## Upstream
 
-- `CodexUsageStatus-<version>-macos-arm64.zip` for Apple Silicon Macs.
-- `CodexUsageStatus-<version>-macos-x86_64.zip` for Intel Macs.
-
-For another MacBook, the most reliable source-build path is to clone the repository on that Mac and run `npm run install:macos`; it will build the correct native architecture there.
-
-## Repository layout
-
-- `macos/CodexUsageStatus/`: native AppKit menu-bar app.
-  - `App/`: status item lifecycle, menu actions, refresh scheduling, and configuration.
-  - `Codex/`: local Codex app-server JSON-RPC client.
-  - `Domain/`: rate-limit response models and usage normalization.
-  - `UI/`: badge styles and AppKit drawing code.
-- `src/`: Node CLI probe for diagnostics and tests.
-- `test/`: Node tests for response normalization and sensitive-output redaction.
-- `scripts/`: build, run, install, and release packaging scripts.
-- `.github/workflows/`: CI and release artifact workflows.
-- `docs/`: architecture, structure, release, and upstream integration notes.
-
-See [docs/project-structure.md](docs/project-structure.md) for the source layout and dependency boundaries.
+This repository is derived from [tollenceld/codex-usage-status](https://github.com/tollenceld/codex-usage-status). See [UPSTREAM.md](UPSTREAM.md) for the base revision and a summary of changes. The upstream MIT license and notice are retained.

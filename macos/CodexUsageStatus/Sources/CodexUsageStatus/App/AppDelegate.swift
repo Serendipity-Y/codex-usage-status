@@ -2,7 +2,7 @@ import AppKit
 import Foundation
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let menu = NSMenu()
 
@@ -20,6 +20,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var lastUsage: UsageSummary?
     private var lastRefreshDate: Date?
     private var lastError: Error?
+    private var nextRefreshDate: Date?
+    private var buttonTrackingArea: NSTrackingArea?
+    private var hoverShowWork: DispatchWorkItem?
+    private var hoverHideWork: DispatchWorkItem?
+    private var menuIsOpen = false
+    private var previewShown = false
+    private lazy var hoverCard: HoverCardViewController = {
+        let card = HoverCardViewController()
+        card.onEnter = { [weak self] in self?.hoverHideWork?.cancel() }
+        card.onExit = { [weak self] in self?.scheduleHoverClose() }
+        return card
+    }()
+    private lazy var hoverPopover: NSPopover = {
+        let popover = NSPopover()
+        popover.contentViewController = hoverCard
+        popover.contentSize = HoverCardViewController.size
+        popover.appearance = NSAppearance(named: .aqua)
+        popover.behavior = .applicationDefined
+        popover.animates = false
+        return popover
+    }()
 
     private lazy var dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -30,13 +51,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if CommandLine.arguments.contains("--show-hover") {
+            FileHandle.standardOutput.write(Data("UI launch callback received\n".utf8))
+        }
         NSApp.setActivationPolicy(.accessory)
         statusItem.length = UsageBadgeRenderer.statusItemLength(for: badgeStyle)
 
         if let button = statusItem.button {
             button.title = ""
             button.imagePosition = .imageOnly
-            button.toolTip = "Codex usage: waiting for first refresh"
+            button.toolTip = nil
+            let area = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil)
+            button.addTrackingArea(area)
+            buttonTrackingArea = area
         }
         renderCurrentBadge()
 
@@ -61,7 +88,63 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(quitItem)
 
         statusItem.menu = menu
+        menu.delegate = self
         refresh()
+    }
+
+    @objc(mouseEntered:) private func statusMouseEntered(_ event: NSEvent) {
+        hoverHideWork?.cancel()
+        hoverShowWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.showHoverPopover() }
+        hoverShowWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: work)
+    }
+
+    @objc(mouseExited:) private func statusMouseExited(_ event: NSEvent) {
+        hoverShowWork?.cancel()
+        scheduleHoverClose()
+    }
+
+    private func scheduleHoverClose() {
+        hoverHideWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.hoverPopover.close() }
+        hoverHideWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
+    }
+
+    private func showHoverPopover() {
+        guard !menuIsOpen, let button = statusItem.button, button.window != nil else { return }
+        updateHoverCard()
+        hoverPopover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        if CommandLine.arguments.contains("--show-hover") {
+            FileHandle.standardOutput.write(Data("Hover visible: \(hoverPopover.isShown)\n".utf8))
+            if let path = ProcessInfo.processInfo.environment["CODEX_USAGE_PREVIEW_PNG"] {
+                hoverCard.view.layoutSubtreeIfNeeded()
+                if let bitmap = hoverCard.view.bitmapImageRepForCachingDisplay(in: hoverCard.view.bounds) {
+                    hoverCard.view.cacheDisplay(in: hoverCard.view.bounds, to: bitmap)
+                    if let png = bitmap.representation(using: .png, properties: [:]) {
+                        try? png.write(to: URL(fileURLWithPath: path))
+                    }
+                }
+            }
+        }
+    }
+
+    func menuWillOpen(_ menu: NSMenu) {
+        menuIsOpen = true
+        hoverShowWork?.cancel()
+        hoverHideWork?.cancel()
+        hoverPopover.close()
+    }
+
+    func menuDidClose(_ menu: NSMenu) {
+        menuIsOpen = false
+    }
+
+    private func updateHoverCard() {
+        hoverCard.update(HoverPresentation(usage: lastUsage, nextRefreshDate: nextRefreshDate,
+            lastRefreshDate: lastRefreshDate, isRefreshing: isRefreshing, refreshFailed: lastError != nil))
+        hoverPopover.contentSize = hoverCard.preferredContentSize
     }
 
     @objc private func refreshFromMenu() {
@@ -133,8 +216,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         isRefreshing = true
+        timer?.invalidate()
+        timer = nil
+        nextRefreshDate = nil
         refreshItem.isEnabled = false
         refreshItem.title = "Refreshing..."
+        updateHoverCard()
 
         Task { [weak self] in
             guard let self else {
@@ -160,7 +247,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func scheduleNextRefresh(after seconds: TimeInterval) {
         timer?.invalidate()
-        timer = Timer.scheduledTimer(timeInterval: seconds, target: self, selector: #selector(timerDidFire), userInfo: nil, repeats: false)
+        let scheduled = Timer(fireAt: Date(timeIntervalSinceNow: seconds), interval: 0,
+            target: self, selector: #selector(timerDidFire), userInfo: nil, repeats: false)
+        timer = scheduled
+        nextRefreshDate = scheduled.fireDate
+        RunLoop.main.add(scheduled, forMode: .common)
+        updateHoverCard()
+        if CommandLine.arguments.contains("--show-hover"), !previewShown {
+            previewShown = true
+            showHoverPopover()
+        }
     }
 
     private func applyUsage(_ usage: UsageSummary) {
@@ -179,16 +275,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.length = UsageBadgeRenderer.statusItemLength(for: badgeStyle)
         if let button = statusItem.button {
             button.title = ""
+            button.toolTip = nil
 
             if let lastError {
                 button.image = UsageBadgeRenderer.errorImage(style: badgeStyle, appearance: button.effectiveAppearance)
-                button.toolTip = "Codex usage: \(lastError.localizedDescription)"
+                button.setAccessibilityLabel("Codex 额度更新失败：\(lastError.localizedDescription)")
             } else if let lastUsage {
                 button.image = UsageBadgeRenderer.image(for: lastUsage, style: badgeStyle, appearance: button.effectiveAppearance)
-                button.toolTip = lastUsage.tooltip(formatter: dateFormatter)
+                button.setAccessibilityLabel(lastUsage.verboseTitle)
             } else {
                 button.image = UsageBadgeRenderer.placeholderImage(style: badgeStyle, appearance: button.effectiveAppearance)
-                button.toolTip = "Codex usage: waiting for first refresh"
+                button.setAccessibilityLabel("Codex 额度正在读取")
             }
         }
     }

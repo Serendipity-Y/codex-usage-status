@@ -8,12 +8,14 @@ This repository is organized as a small, native macOS companion app plus a Node.
 - `src/`: Node.js CLI probe for the same local Codex app-server data source.
 - `test/`: Node.js unit tests for response normalization and redaction.
 - `scripts/`: build, run, install, and release packaging scripts.
+- `lifecycle/`: optional per-user LaunchAgent for starting and quitting the badge with ChatGPT.
 - `docs/`: architecture, release, and upstream integration notes.
 - `.github/workflows/`: CI and release packaging workflows.
 
 Generated output is intentionally kept out of git:
 
 - `dist/`: local `.app` and release ZIP output.
+- `build/`, `backups/`, and `outputs/`: local test/build artifacts; ignored by git.
 - `macos/CodexUsageStatus/.build/`: SwiftPM build cache.
 - `node_modules/`: local Node dependencies if any are added later.
 

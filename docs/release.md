@@ -6,6 +6,8 @@ For a full pre-release pass, also use [release-checklist.md](release-checklist.m
 
 ```sh
 npm test
+swift test --package-path macos/CodexUsageStatus
+python3 lifecycle/test_lifecycle.py
 npm run package:macos:all
 ```
 
@@ -38,6 +40,8 @@ CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" npm run package
 ```
 
 Notarization is intentionally not automated in this repository because it requires Apple developer credentials.
+
+The package commands create local ZIP files. Publishing them to a GitHub Release is a separate maintainer action; no release assets are uploaded automatically by these scripts.
 
 ## Architecture
 

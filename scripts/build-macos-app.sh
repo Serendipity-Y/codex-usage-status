@@ -10,6 +10,7 @@ MACOS_DIR="$CONTENTS_DIR/MacOS"
 VERSION="${VERSION:-0.1.0}"
 CODESIGN_IDENTITY="${CODESIGN_IDENTITY:--}"
 MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-13.0}"
+BUNDLE_IDENTIFIER="${BUNDLE_IDENTIFIER:-io.github.codexusagestatus.app}"
 
 detect_hardware_arch() {
   local machine
@@ -65,7 +66,7 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
   <key>CFBundleExecutable</key>
   <string>CodexUsageStatus</string>
   <key>CFBundleIdentifier</key>
-  <string>dev.local.CodexUsageStatus</string>
+  <string>__BUNDLE_IDENTIFIER__</string>
   <key>CFBundleName</key>
   <string>Codex Usage Status</string>
   <key>CFBundlePackageType</key>
@@ -86,6 +87,7 @@ PLIST
 
 /usr/bin/sed -i '' "s/__VERSION__/$VERSION/g" "$CONTENTS_DIR/Info.plist"
 /usr/bin/sed -i '' "s/__MIN_MACOS__/$MACOSX_DEPLOYMENT_TARGET/g" "$CONTENTS_DIR/Info.plist"
+/usr/bin/sed -i '' "s/__BUNDLE_IDENTIFIER__/$BUNDLE_IDENTIFIER/g" "$CONTENTS_DIR/Info.plist"
 
 codesign --force --sign "$CODESIGN_IDENTITY" "$APP_DIR" >/dev/null
 
