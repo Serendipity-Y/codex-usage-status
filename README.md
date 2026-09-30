@@ -6,6 +6,10 @@ This is a community project and is not affiliated with or endorsed by OpenAI.
 
 The menu-bar badge shows the remaining 5-hour and weekly usage percentages. Hover over it to see the available reset count, 5-hour and weekly reset times, and the next data refresh. Click the badge to refresh, change the display style, open settings, or quit.
 
+![Codex Usage Status menu-bar badge showing remaining 5-hour and weekly usage](docs/assets/menu-bar-badge.png)
+
+The reset count is the separate number of reset credits reported by Codex (`rateLimitResetCredits.availableCount`). It is not another usage percentage and may be unavailable if Codex does not return it.
+
 ## Privacy and safety
 
 - Usage comes from the local Codex app-server method `account/rateLimits/read`.
@@ -24,15 +28,26 @@ See [PRIVACY.md](PRIVACY.md) and [SECURITY.md](SECURITY.md) for details. This ap
 - Swift toolchain / Xcode Command Line Tools
 - Node.js 20 or later for the CLI and JavaScript tests
 
-If ChatGPT or Codex is installed at a different path, set `CODEX_BIN` when launching the app or pass paths to the lifecycle installer.
+If Codex is installed at a different path, set `CODEX_BIN` in the app's launch environment or pass `--codex-bin` to the lifecycle installer. The app checks the default ChatGPT and Codex locations when no override is set.
 
-## Build and install
+## Quick start from source
+
+There is no prebuilt download in GitHub Releases yet. Clone the repository and run the installer from its root:
+
+```sh
+git clone https://github.com/Serendipity-Y/codex-usage-status.git
+cd codex-usage-status
+npm run install:macos
+```
+
+The installer builds the app, quits any running `CodexUsageStatus` process, replaces `/Applications/CodexUsageStatus.app`, and opens the new app. To build without installing, use `npm run build:macos`.
+
+## Development checks
 
 ```sh
 npm test
 swift test --package-path macos/CodexUsageStatus
 npm run build:macos
-npm run install:macos
 ```
 
 The app is menu-bar-only and does not appear in the Dock. To run it manually, open `CodexUsageStatus.app` from `/Applications`. On Apple Silicon the build script selects `arm64`; on Intel it selects `x86_64`. Override with `BUILD_ARCH=arm64` or `BUILD_ARCH=x86_64`.
@@ -78,6 +93,34 @@ npm run package:macos:all
 ```
 
 The first command creates a ZIP for the current Mac architecture. The second creates architecture-specific Apple Silicon and Intel ZIPs plus `SHA256SUMS.txt` in `dist/`. These commands package the app; they do not publish a GitHub release.
+
+## Troubleshooting
+
+- **No menu-bar badge:** The app is menu-bar-only and has no Dock icon. Check the menu-bar area, or open `CodexUsageStatus.app` from `/Applications` to start it again.
+- **No usage data:** Confirm the configured Codex executable exists and can start `app-server`. The CLI probe can check the local response; set `CODEX_BIN` when using a non-default executable:
+
+  ```sh
+  CODEX_BIN="/path/to/codex" npm run usage:json
+  ```
+
+  The output contains your usage information, so review it before sharing publicly.
+- **ChatGPT does not start or stop the badge:** Run `python3 lifecycle/install.py check` from the repository root and verify the saved app paths. Lifecycle logs are under `~/Library/Logs/CodexUsageStatusLifecycle/`; see [lifecycle instructions](lifecycle/README.md).
+
+## Uninstall
+
+If the lifecycle helper is enabled, disable it first:
+
+```sh
+python3 lifecycle/install.py disable
+```
+
+Then quit the badge from its menu and move `/Applications/CodexUsageStatus.app` to the Trash. Disabling the helper stops automatic start/quit behavior but preserves its LaunchAgent configuration, helper program, and logs. To remove those files too, delete:
+
+- `~/Library/LaunchAgents/io.github.codexusagestatus.chatgpt-lifecycle.plist`
+- `~/Library/Application Support/CodexUsageStatusLifecycle/`
+- `~/Library/Logs/CodexUsageStatusLifecycle/` (optional; contains local diagnostic logs)
+
+If you installed the app or ChatGPT in a custom location, remove the app from the location you selected.
 
 ## Upstream
 

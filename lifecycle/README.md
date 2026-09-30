@@ -30,7 +30,25 @@ The selected paths are stored in the per-user LaunchAgent. `check` reads that sa
 python3 lifecycle/install.py disable
 ```
 
-Disabling the helper leaves the quota app available for manual use. Running `install` again enables it.
+Disabling the helper leaves the quota app available for manual use. It also preserves the LaunchAgent plist, helper program, and logs. Running `install` again enables it.
+
+## Remove the helper completely
+
+Run `disable` first so the LaunchAgent is stopped, then remove its configuration and helper files:
+
+```sh
+python3 lifecycle/install.py disable
+rm -f "$HOME/Library/LaunchAgents/io.github.codexusagestatus.chatgpt-lifecycle.plist"
+rm -rf "$HOME/Library/Application Support/CodexUsageStatusLifecycle"
+```
+
+The diagnostic logs are kept separately. To remove them as well:
+
+```sh
+rm -rf "$HOME/Library/Logs/CodexUsageStatusLifecycle"
+```
+
+This only removes the lifecycle helper. Quit and remove `CodexUsageStatus.app` separately if you no longer want the menu-bar app.
 
 ## Tests
 
