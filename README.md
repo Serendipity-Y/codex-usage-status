@@ -4,6 +4,8 @@ An unofficial macOS menu-bar companion for viewing Codex usage at a glance. It a
 
 This is a community project and is not affiliated with or endorsed by OpenAI.
 
+Recent changes / 更新记录: [CHANGELOG.md](CHANGELOG.md).
+
 The menu-bar badge shows the remaining 5-hour and weekly usage percentages. Hover over it to see the available reset count, 5-hour and weekly reset times, and the next data refresh. Click the badge to refresh, change the display style, open settings, or quit.
 
 ![Codex Usage Status menu-bar badge showing remaining 5-hour and weekly usage](docs/assets/menu-bar-badge.png)
@@ -99,6 +101,13 @@ npm run package:macos:all
 The first command creates a ZIP for the current Mac architecture. The second creates architecture-specific Apple Silicon and Intel ZIPs plus `SHA256SUMS.txt` in `dist/`. These commands package the app; they do not publish a GitHub release.
 
 ## Troubleshooting
+
+- **Question marks after a refresh failure:** The card retains the last successful snapshot and shows the error category and last-success time. Automatic retries wait 60 seconds after the first failure, 120 after the second, and 300 thereafter. A successful read returns to the normal refresh interval. Click **Refresh** for a manual retry or **Settings...** for more detail.
+- **Investigating recurring failures:** Read the local refresh diagnostics (fixed categories and retry timings; no raw account data):
+
+  ```sh
+  /usr/bin/log show --last 30m --style compact --predicate 'subsystem == "io.github.codexusagestatus" AND category == "refresh"'
+  ```
 
 - **No menu-bar badge:** The app is menu-bar-only and has no Dock icon. Check the menu-bar area, or open `CodexUsageStatus.app` from `/Applications` to start it again.
 - **No usage data:** Confirm the configured Codex executable exists and can start `app-server`. The CLI probe can check the local response; set `CODEX_BIN` when using a non-default executable:

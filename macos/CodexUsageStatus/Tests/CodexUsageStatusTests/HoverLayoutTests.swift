@@ -2,6 +2,34 @@ import AppKit
 import Testing
 @testable import CodexUsageStatus
 
+@Test @MainActor func visiblePopoverResizesForFailureAndRecovery() async throws {
+    _ = NSApplication.shared
+    let host = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 80, height: 40), styleMask: .borderless,
+                        backing: .buffered, defer: false)
+    let anchor = NSView(frame: NSRect(x: 0, y: 0, width: 80, height: 40))
+    host.contentView = anchor
+    host.orderFront(nil)
+    let controller = HoverCardViewController()
+    let popover = NSPopover()
+    popover.animates = false
+    popover.contentViewController = controller
+    popover.contentSize = HoverCardViewController.size
+    defer { popover.close(); host.orderOut(nil) }
+    controller.update(HoverPresentation(usage: nil, nextRefreshDate: nil, lastRefreshDate: nil,
+        isRefreshing: false, refreshFailed: false))
+    popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxY)
+    for failed in [true, false] {
+        controller.update(HoverPresentation(usage: nil, nextRefreshDate: nil, lastRefreshDate: nil,
+            isRefreshing: false, refreshFailed: failed))
+        popover.contentSize = controller.preferredContentSize
+        try await Task.sleep(for: .milliseconds(50))
+        let expected = HoverCardViewController.size.height + (failed ? 28 : 0)
+        #expect(popover.isShown)
+        #expect(popover.contentSize.height == expected)
+        #expect(controller.view.frame.height == expected)
+    }
+}
+
 @Test @MainActor func hoverCardStaysWhiteAndFitsFailureAndUnknownLabels() {
     let controller = HoverCardViewController()
     controller.update(HoverPresentation(usage: nil, nextRefreshDate: Date().addingTimeInterval(300),
@@ -38,4 +66,16 @@ import Testing
     #expect(!visibleText.contains("自动更新"))
     #expect(!visibleText.contains { $0.hasPrefix("更新于") || $0.hasPrefix("点击圆环") })
     #expect(controller.preferredContentSize.height == HoverCardViewController.size.height)
+
+    for error in [FetchError.timeout, .authenticationRequired, .invalidOutput, .appServerError(-32000)] {
+        controller.update(HoverPresentation(usage: nil, nextRefreshDate: nil,
+            lastRefreshDate: Date().addingTimeInterval(-86400), isRefreshing: false, refreshFailed: true,
+            failureDescription: error.briefDescription))
+        view.layoutSubtreeIfNeeded()
+        for label in fields(in: view).filter({ !$0.isHidden }) {
+            let frame = label.convert(label.bounds, to: view)
+            #expect(frame.minY >= 0 && frame.maxY <= view.bounds.maxY)
+            #expect(label.frame.width >= label.intrinsicContentSize.width)
+        }
+    }
 }

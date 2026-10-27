@@ -70,7 +70,9 @@ final class HoverCardViewController: NSViewController {
         status.isHidden = !presentation.isStale
         status.textColor = NSColor(calibratedRed: 0.65, green: 0.32, blue: 0.05, alpha: 1)
         preferredContentSize = NSSize(width: Self.size.width, height: Self.size.height + (presentation.isStale ? 28 : 0))
-        view.setFrameSize(preferredContentSize)
+        // A visible popover owns its content frame. Resizing it here can reset
+        // preferredContentSize to the old window height and clip the extra row.
+        if view.window == nil { view.setFrameSize(preferredContentSize) }
     }
 
     private func label(_ text: String, size: CGFloat, weight: NSFont.Weight = .regular, color: NSColor? = nil) -> NSTextField {

@@ -12,6 +12,10 @@ enum AppConfig {
     static let defaultRefreshInterval: TimeInterval = 120
     static let errorRetryInterval: TimeInterval = 300
     static let appServerTimeout: DispatchTimeInterval = .seconds(20)
+
+    static func retryInterval(afterFailures count: Int) -> TimeInterval {
+        [60, 120, errorRetryInterval][min(max(count - 1, 0), 2)]
+    }
 }
 
 func configuredRefreshInterval() -> TimeInterval {

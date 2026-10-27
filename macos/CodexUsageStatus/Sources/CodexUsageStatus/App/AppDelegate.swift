@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import OSLog
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
@@ -15,6 +16,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private var timer: Timer?
     private var isRefreshing = false
+    private var consecutiveFailures = 0
+    private let refreshLog = Logger(subsystem: "io.github.codexusagestatus", category: "refresh")
     private let refreshInterval = configuredRefreshInterval()
     private var badgeStyle = BadgeStyle.load()
     private var lastUsage: UsageSummary?
@@ -143,7 +146,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func updateHoverCard() {
         hoverCard.update(HoverPresentation(usage: lastUsage, nextRefreshDate: nextRefreshDate,
-            lastRefreshDate: lastRefreshDate, isRefreshing: isRefreshing, refreshFailed: lastError != nil))
+            lastRefreshDate: lastRefreshDate, isRefreshing: isRefreshing, refreshFailed: lastError != nil,
+            failureDescription: (lastError as? FetchError)?.briefDescription ?? "读取失败"))
         hoverPopover.contentSize = hoverCard.preferredContentSize
     }
 
@@ -183,7 +187,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         Display style: \(badgeStyle.menuTitle)
         Refresh interval: \(Int(refreshInterval)) seconds
-        Failure retry: \(Int(AppConfig.errorRetryInterval)) seconds
+        Failure retry: 60 / 120 / \(Int(AppConfig.errorRetryInterval)) seconds
         Last refresh: \(lastRefresh)
         Data source: local Codex app-server
         """
@@ -233,14 +237,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self.isRefreshing = false
                 self.refreshItem.isEnabled = true
                 self.refreshItem.title = "Refresh"
+                if self.consecutiveFailures > 0 {
+                    self.refreshLog.notice("Usage refresh recovered after \(self.consecutiveFailures) failures")
+                }
+                self.consecutiveFailures = 0
                 self.applyUsage(usage)
                 self.scheduleNextRefresh(after: self.refreshInterval)
             } catch {
                 self.isRefreshing = false
                 self.refreshItem.isEnabled = true
                 self.refreshItem.title = "Refresh"
+                self.consecutiveFailures += 1
+                let retry = AppConfig.retryInterval(afterFailures: self.consecutiveFailures)
+                let reason = (error as? FetchError)?.briefDescription ?? "读取失败"
+                self.refreshLog.error("Usage refresh failed: \(reason, privacy: .public); retry in \(Int(retry)) seconds")
+                if let fetchError = error as? FetchError, case .appServerError(let code) = fetchError {
+                    if let code {
+                        self.refreshLog.error("RPC error code: \(code)")
+                    } else {
+                        self.refreshLog.error("RPC error code: unknown")
+                    }
+                }
                 self.applyError(error)
-                self.scheduleNextRefresh(after: AppConfig.errorRetryInterval)
+                self.scheduleNextRefresh(after: retry)
             }
         }
     }

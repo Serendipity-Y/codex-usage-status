@@ -10,7 +10,8 @@ struct HoverPresentation {
     let isStale: Bool
 
     init(usage: UsageSummary?, nextRefreshDate: Date?, lastRefreshDate: Date?,
-         isRefreshing: Bool, refreshFailed: Bool, now: Date = Date(), timeZone: TimeZone = .current) {
+         isRefreshing: Bool, refreshFailed: Bool, now: Date = Date(), timeZone: TimeZone = .current,
+         failureDescription: String? = nil) {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "zh_CN")
         formatter.timeZone = timeZone
@@ -33,7 +34,16 @@ struct HoverPresentation {
             nextRefresh = "等待首次刷新"
         }
         isStale = refreshFailed
-        status = refreshFailed ? "更新失败 · 上次记录" : (isRefreshing ? "更新中" : "自动更新")
+        if refreshFailed, let failureDescription {
+            if let lastRefreshDate {
+                formatter.dateFormat = calendar.isDate(lastRefreshDate, inSameDayAs: now) ? "HH:mm" : "M/d HH:mm"
+                status = "\(failureDescription) · 上次成功 \(formatter.string(from: lastRefreshDate))"
+            } else {
+                status = "\(failureDescription) · 暂无数据"
+            }
+        } else {
+            status = refreshFailed ? "更新失败 · 上次记录" : (isRefreshing ? "更新中" : "自动更新")
+        }
         if let lastRefreshDate {
             formatter.dateFormat = calendar.isDate(lastRefreshDate, inSameDayAs: now) ? "HH:mm:ss" : "M月d日 HH:mm:ss"
             updatedAt = "更新于 \(formatter.string(from: lastRefreshDate))"

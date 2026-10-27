@@ -57,3 +57,22 @@ private func usage(_ resetJSON: String = "") throws -> UsageSummary {
     #expect(failed.resetCredits == "4 次")
     #expect(failed.updatedAt == "更新于 16:58:00")
 }
+
+@Test func failureExplainsCauseAndAgeWithoutDiscardingLastUsage() throws {
+    let now = Date(timeIntervalSince1970: 1790758800)
+    let zone = TimeZone(identifier: "Asia/Shanghai")!
+    let stale = HoverPresentation(usage: try usage(), nextRefreshDate: now.addingTimeInterval(60),
+        lastRefreshDate: now.addingTimeInterval(-120), isRefreshing: false, refreshFailed: true,
+        now: now, timeZone: zone, failureDescription: FetchError.timeout.briefDescription)
+    #expect(stale.status == "读取超时 · 上次成功 16:58")
+    #expect(stale.fiveHourReset == "今天 19:00")
+    #expect(stale.nextRefresh == "17:01:00")
+    let empty = HoverPresentation(usage: nil, nextRefreshDate: nil, lastRefreshDate: nil,
+        isRefreshing: false, refreshFailed: true, failureDescription: "读取超时")
+    #expect(empty.status == "读取超时 · 暂无数据")
+}
+
+@Test func failureRetriesBackOffWithoutGoingBelowOneMinute() {
+    #expect((1...5).map { AppConfig.retryInterval(afterFailures: $0) } == [60, 120, 300, 300, 300])
+    #expect(AppConfig.retryInterval(afterFailures: 1) >= AppConfig.minimumRefreshInterval)
+}

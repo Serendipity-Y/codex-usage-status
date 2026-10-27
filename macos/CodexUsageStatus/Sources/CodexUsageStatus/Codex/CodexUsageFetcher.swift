@@ -8,80 +8,76 @@ enum CodexUsageFetcher {
         }.value
     }
 
-    static func fetchSync() throws -> UsageSummary {
-        let response = try readRateLimits()
-        return try UsageSummary(response: response)
+    static func fetchSync(codexPath: String? = nil,
+                          timeout: DispatchTimeInterval = AppConfig.appServerTimeout) throws -> UsageSummary {
+        let path = codexPath ?? ProcessInfo.processInfo.environment["CODEX_BIN"] ?? AppConfig.defaultCodexPath
+        return try UsageSummary(response: readRateLimits(codexPath: path, timeout: timeout))
     }
 
-    private static func readRateLimits() throws -> RateLimitsResponse {
-        let codexPath = ProcessInfo.processInfo.environment["CODEX_BIN"] ?? AppConfig.defaultCodexPath
+    private static func readRateLimits(codexPath: String, timeout: DispatchTimeInterval) throws -> RateLimitsResponse {
         guard FileManager.default.isExecutableFile(atPath: codexPath) else {
             throw FetchError.codexNotFound(codexPath)
         }
-
         let process = Process()
         process.executableURL = URL(fileURLWithPath: codexPath)
         process.arguments = ["app-server", "--listen", "stdio://"]
+        let input = Pipe()
+        let output = Pipe()
+        let errors = Pipe()
+        process.standardInput = input
+        process.standardOutput = output
+        process.standardError = errors
 
-        let standardInput = Pipe()
-        let standardOutput = Pipe()
-        let standardError = Pipe()
-
-        process.standardInput = standardInput
-        process.standardOutput = standardOutput
-        process.standardError = standardError
-
+        // An early server exit must produce a write error, not terminate the app with SIGPIPE.
+        guard fcntl(input.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, 1) != -1 else {
+            throw FetchError.connectionClosed
+        }
         let finished = DispatchSemaphore(value: 0)
-        process.terminationHandler = { _ in
-            finished.signal()
+        process.terminationHandler = { _ in finished.signal() }
+        let responses = ResponseBox()
+        output.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            if data.isEmpty {
+                handle.readabilityHandler = nil
+                responses.finish()
+            } else {
+                responses.append(data)
+            }
         }
-
-        let responseBox = ResponseBox()
-        standardOutput.fileHandleForReading.readabilityHandler = { handle in
-            responseBox.append(handle.availableData)
+        // Drain stderr while the server runs: a full pipe can block its RPC response.
+        // Do not retain server logs, which may contain account-related information.
+        errors.fileHandleForReading.readabilityHandler = { handle in
+            if handle.availableData.isEmpty { handle.readabilityHandler = nil }
         }
-
-        do {
-            try process.run()
-        } catch {
-            standardOutput.fileHandleForReading.readabilityHandler = nil
-            throw error
-        }
-
-        let requestLines = [
-            #"{"method":"initialize","id":1,"params":{"clientInfo":{"name":"codex_usage_status_menubar","title":"Codex Usage Status","version":"0.1.0"},"capabilities":{"experimentalApi":true}}}"#,
-            #"{"method":"initialized"}"#,
-            #"{"method":"account/rateLimits/read","id":2}"#
-        ].joined(separator: "\n") + "\n"
-
-        standardInput.fileHandleForWriting.write(Data(requestLines.utf8))
-
-        if responseBox.wait(timeout: .now() + AppConfig.appServerTimeout) == .timedOut {
-            standardOutput.fileHandleForReading.readabilityHandler = nil
-            standardInput.fileHandleForWriting.closeFile()
+        defer {
+            output.fileHandleForReading.readabilityHandler = nil
+            errors.fileHandleForReading.readabilityHandler = nil
+            try? input.fileHandleForWriting.close()
             terminateProcess(process, finished: finished)
-            throw FetchError.timeout
         }
-
-        standardOutput.fileHandleForReading.readabilityHandler = nil
-        standardInput.fileHandleForWriting.closeFile()
-        terminateProcess(process, finished: finished)
-        _ = standardError.fileHandleForReading.readDataToEndOfFile()
-
-        switch responseBox.result() {
-        case .success(let response):
-            return response
-        case .failure(let error):
-            throw error
-        case .none:
-            throw FetchError.missingRateLimitResponse
+        try process.run()
+        let deadline = DispatchTime.now() + timeout
+        func send(_ line: String) throws {
+            do {
+                try input.fileHandleForWriting.write(contentsOf: Data((line + "\n").utf8))
+            } catch {
+                throw FetchError.connectionClosed
+            }
+        }
+        try send(#"{"method":"initialize","id":1,"params":{"clientInfo":{"name":"codex_usage_status_menubar","title":"Codex Usage Status","version":"0.1.0"},"capabilities":{"experimentalApi":true}}}"#)
+        _ = try responses.wait(for: "1", until: deadline)
+        try send(#"{"method":"initialized"}"#)
+        try send(#"{"method":"account/rateLimits/read","id":2}"#)
+        let result = try responses.wait(for: "2", until: deadline)
+        do {
+            return try JSONDecoder().decode(RateLimitsResponse.self, from: result)
+        } catch {
+            throw FetchError.invalidOutput
         }
     }
 
     private static func terminateProcess(_ process: Process, finished: DispatchSemaphore) {
-        guard process.isRunning else {
-            return
-        }
+        guard process.isRunning else { return }
         process.terminate()
         if finished.wait(timeout: .now() + 1) == .timedOut, process.isRunning {
             kill(process.processIdentifier, SIGKILL)
@@ -93,101 +89,104 @@ enum CodexUsageFetcher {
 final class ResponseBox: @unchecked Sendable {
     private let lock = NSLock()
     private let semaphore = DispatchSemaphore(value: 0)
-    private var buffer = ""
-    private var storedResult: Result<RateLimitsResponse, Error>?
+    private var buffer = Data()
+    private var results: [String: Result<Data, Error>] = [:]
+    private var ended = false
 
     func append(_ data: Data) {
-        guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else {
-            return
-        }
-
         lock.lock()
         defer { lock.unlock() }
-
-        if storedResult != nil {
-            return
-        }
-
-        buffer.append(text)
-        while let newline = buffer.firstIndex(of: "\n") {
-            let line = String(buffer[..<newline])
+        // Decode complete lines only; a pipe chunk can split a UTF-8 character.
+        buffer.append(data)
+        while let newline = buffer.firstIndex(of: 10) {
+            consume(Data(buffer[..<newline]))
             buffer.removeSubrange(...newline)
-
-            do {
-                if let response = try Self.parseRateLimitsLine(line) {
-                    storedResult = .success(response)
-                    semaphore.signal()
-                    return
-                }
-            } catch {
-                storedResult = .failure(error)
-                semaphore.signal()
-                return
-            }
         }
     }
 
-    func wait(timeout: DispatchTime) -> DispatchTimeoutResult {
-        semaphore.wait(timeout: timeout)
-    }
-
-    func result() -> Result<RateLimitsResponse, Error>? {
+    func finish() {
         lock.lock()
         defer { lock.unlock() }
-        return storedResult
+        if !buffer.isEmpty { consume(buffer); buffer.removeAll() }
+        ended = true
+        semaphore.signal()
     }
 
-    private static func parseRateLimitsLine(_ line: String) throws -> RateLimitsResponse? {
-        guard let lineData = line.data(using: .utf8),
-              let object = try JSONSerialization.jsonObject(with: lineData) as? [String: Any] else {
-            return nil
+    func wait(for id: String, until deadline: DispatchTime) throws -> Data {
+        while true {
+            lock.lock()
+            let result = results.removeValue(forKey: id)
+            let closed = ended
+            lock.unlock()
+            if let result { return try result.get() }
+            if closed { throw FetchError.missingRateLimitResponse }
+            if semaphore.wait(timeout: deadline) == .timedOut { throw FetchError.timeout }
         }
-
-        guard stringID(object["id"]) == "2" else {
-            return nil
-        }
-
-        if object["error"] != nil {
-            throw FetchError.appServerError
-        }
-
-        guard let result = object["result"] else {
-            throw FetchError.invalidOutput
-        }
-
-        let resultData = try JSONSerialization.data(withJSONObject: result)
-        return try JSONDecoder().decode(RateLimitsResponse.self, from: resultData)
     }
 
-    private static func stringID(_ value: Any?) -> String? {
-        if let string = value as? String { return string }
-        if let number = value as? NSNumber { return number.stringValue }
-        return nil
+    private func consume(_ line: Data) {
+        guard let object = (try? JSONSerialization.jsonObject(with: line)) as? [String: Any],
+              let id = (object["id"] as? String) ?? (object["id"] as? NSNumber)?.stringValue,
+              id == "1" || id == "2" else { return }
+        if let error = object["error"] as? [String: Any] {
+            results[id] = .failure(FetchError.serverError(error))
+        } else if let result = object["result"], JSONSerialization.isValidJSONObject(result),
+                  let data = try? JSONSerialization.data(withJSONObject: result) {
+            results[id] = .success(data)
+        } else {
+            results[id] = .failure(FetchError.invalidOutput)
+        }
+        semaphore.signal()
     }
 }
 
-enum FetchError: LocalizedError {
+enum FetchError: LocalizedError, Equatable {
     case codexNotFound(String)
     case timeout
-    case appServerExited(Int)
-    case appServerError
+    case connectionClosed
+    case notInitialized
+    case authenticationRequired
+    case rateLimited
+    case appServerError(Int?)
     case invalidOutput
     case missingRateLimitResponse
 
+    static func serverError(_ object: [String: Any]) -> FetchError {
+        // Classify known messages, but never retain or display raw server payloads.
+        let message = (object["message"] as? String ?? "").lowercased()
+        let code = object["code"] as? Int
+        if message.contains("not initialized") { return .notInitialized }
+        if code == 401 || message.contains("unauthorized") || message.contains("not logged in") || message.contains("authentication required") {
+            return .authenticationRequired
+        }
+        if code == 429 || message.contains("too many requests") { return .rateLimited }
+        return .appServerError(code)
+    }
+
+    var briefDescription: String {
+        switch self {
+        case .codexNotFound: return "未找到 Codex"
+        case .timeout: return "读取超时"
+        case .connectionClosed, .missingRateLimitResponse: return "读取进程已断开"
+        case .notInitialized: return "初始化未完成"
+        case .authenticationRequired: return "请检查 Codex 登录"
+        case .rateLimited: return "服务暂时限流"
+        case .appServerError: return "额度服务返回错误"
+        case .invalidOutput: return "额度数据格式异常"
+        }
+    }
+
     var errorDescription: String? {
         switch self {
-        case .codexNotFound(let path):
-            return "Codex binary not found at \(path)"
-        case .timeout:
-            return "Codex app-server did not respond within 20 seconds"
-        case .appServerExited(let status):
-            return "Codex app-server exited with status \(status)"
-        case .appServerError:
-            return "Codex app-server returned an error"
-        case .invalidOutput:
-            return "Codex app-server returned unexpected usage data"
-        case .missingRateLimitResponse:
-            return "Codex app-server did not return usage data"
+        case .codexNotFound(let path): return "Codex binary not found at \(path)"
+        case .timeout: return "Codex app-server did not respond within 20 seconds"
+        case .connectionClosed: return "Codex app-server connection closed while sending a request"
+        case .notInitialized: return "Codex app-server initialization was not complete"
+        case .authenticationRequired: return "Codex app-server requires sign-in; check your Codex account"
+        case .rateLimited: return "Codex app-server is temporarily rate limited"
+        case .appServerError(let code): return "Codex app-server returned an error (code: \(code.map(String.init) ?? "unknown"))"
+        case .invalidOutput: return "Codex app-server returned unexpected usage data"
+        case .missingRateLimitResponse: return "Codex app-server closed its output before responding"
         }
     }
 }

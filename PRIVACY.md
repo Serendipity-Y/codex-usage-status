@@ -32,6 +32,8 @@ The only network activity involved is whatever the official Codex app-server per
 
 ## Refresh behavior
 
-The default refresh interval is 120 seconds. The minimum refresh interval is 60 seconds, and failed refreshes back off to 300 seconds.
+The default refresh interval is 120 seconds. The minimum refresh interval is 60 seconds. Consecutive failures retry after 60, 120, then 300 seconds; success restores the normal interval.
+
+Refresh failures and recovery events are recorded in the local macOS unified log under subsystem `io.github.codexusagestatus`, category `refresh`. Entries contain fixed error categories, numeric RPC error codes, and retry timing. They do not contain raw server messages, account identifiers, credentials, or quota values. Server stderr is drained and discarded.
 
 Usage status does not need high-frequency polling, so the app keeps refreshes conservative.

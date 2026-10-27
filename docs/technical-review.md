@@ -43,10 +43,12 @@ Refresh is intentionally conservative:
 
 - automatic refresh every 120 seconds by default
 - 60-second minimum if overridden with `CODEX_USAGE_REFRESH_SECONDS`
-- failed refreshes back off to 300 seconds
+- consecutive failures retry after 60, 120, then 300 seconds; success resets the backoff
 - no overlapping refreshes
 - manual refresh from the menu
-- 20-second timeout per app-server request
+- one 20-second deadline covering initialization and the usage request, followed by bounded process cleanup
+
+The native client waits for the initialization reply before sending `initialized` and `account/rateLimits/read`. It assembles complete byte-delimited JSON lines, drains stderr while the process runs, and detects stdout closure without waiting for the request deadline. Failure details use fixed categories rather than raw server text. The hover card keeps the last successful snapshot and shows the failure category and last-success time.
 
 ## Known limitations
 
