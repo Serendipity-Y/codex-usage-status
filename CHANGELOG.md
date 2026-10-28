@@ -1,6 +1,10 @@
 # 更新记录 / Changelog
 
-## 未发布 / Unreleased — 2026-10-27
+## v0.1.1 — 2026-10-28
+
+本 Fork 的首个二进制发行版。既有的 `v0.1.0` 标签来自上游项目。
+
+This is the first binary release of this fork. The existing `v0.1.0` tag belongs to the upstream project.
 
 ### 中文
 
@@ -20,4 +24,4 @@
 - Add local diagnostics containing fixed error categories, RPC error codes, and retry timing, without raw server output, credentials, or usage values.
 - Add regression coverage for delayed initialization, blocked stderr, process exits, timeouts, split data, and popover resizing.
 
-These changes are available from source. This entry does not announce a published binary release.
+The macOS downloads are ad-hoc signed and have not been notarized by Apple; Gatekeeper may block them. See the release notes for details.

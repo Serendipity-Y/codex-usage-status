@@ -31,14 +31,22 @@ See [PRIVACY.md](PRIVACY.md) and [SECURITY.md](SECURITY.md) for details. This ap
 - macOS 13 or later
 - ChatGPT desktop installed at `/Applications/ChatGPT.app` to use the automatic start/quit helper
 - The Codex executable bundled with ChatGPT, or a standalone Codex app at `/Applications/Codex.app`
-- Swift toolchain / Xcode Command Line Tools
-- Node.js 20 or later for the CLI and JavaScript tests
+- Swift toolchain / Xcode Command Line Tools and Python 3 to install the optional lifecycle helper
+- Swift toolchain / Xcode Command Line Tools and Node.js 20 or later to build from source or run the JavaScript tests
 
 If Codex is installed at a different path, set `CODEX_BIN` in the app's launch environment or pass `--codex-bin` to the lifecycle installer. The app checks the default ChatGPT and Codex locations when no override is set.
 
+## Download a macOS app
+
+Download the ZIP for Apple Silicon (`arm64`) or Intel (`x86_64`) from [GitHub Releases](https://github.com/Serendipity-Y/codex-usage-status/releases), unzip it, and move `CodexUsageStatus.app` to `/Applications`. Open the app to show its menu-bar badge. Optional checksum verification instructions are in the release notes.
+
+The downloads are ad-hoc signed, without a Developer ID signature or Apple notarization. Gatekeeper may block a downloaded app. Building from source remains available using the steps below.
+
+The download contains the menu-bar app only. The optional ChatGPT start/quit helper requires the source repository, Python 3, and Xcode Command Line Tools; see [Optional ChatGPT start/quit behavior](#optional-chatgpt-startquit-behavior).
+
 ## Quick start from source
 
-There is no prebuilt download in GitHub Releases yet. Clone the repository and run the installer from its root:
+Clone the repository and run the installer from its root:
 
 ```sh
 git clone https://github.com/Serendipity-Y/codex-usage-status.git
@@ -58,11 +66,11 @@ npm run build:macos
 
 The app is menu-bar-only and does not appear in the Dock. To run it manually, open `CodexUsageStatus.app` from `/Applications`. On Apple Silicon the build script selects `arm64`; on Intel it selects `x86_64`. Override with `BUILD_ARCH=arm64` or `BUILD_ARCH=x86_64`.
 
-Local builds are ad-hoc signed. The source repository does not promise signed or notarized release downloads; macOS may show a Gatekeeper warning for an app built or downloaded without Developer ID signing and notarization.
+Local builds are ad-hoc signed. macOS may show a Gatekeeper warning for an app built or downloaded without Developer ID signing and notarization.
 
 ## Optional ChatGPT start/quit behavior
 
-After building and installing the app in `/Applications`, install the per-user background listener:
+After installing the app in `/Applications`, obtain this source repository and install the per-user background listener from the repository root. This compiles the helper and requires Python 3 and Xcode Command Line Tools:
 
 ```sh
 python3 lifecycle/install.py install

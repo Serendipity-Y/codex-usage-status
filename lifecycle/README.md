@@ -6,7 +6,7 @@ The helper starts at user login, but the quota app only starts when ChatGPT is r
 
 ## Install
 
-First build and install `CodexUsageStatus.app` in `/Applications`, then run:
+First install `CodexUsageStatus.app` in `/Applications` (from a release ZIP or a source build). Clone or download the source repository, then run these commands from its root. Python 3 and Xcode Command Line Tools are required to compile the helper:
 
 ```sh
 python3 lifecycle/install.py install

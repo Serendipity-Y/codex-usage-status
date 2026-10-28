@@ -7,7 +7,7 @@ DIST_DIR="$ROOT_DIR/dist"
 APP_DIR="$DIST_DIR/CodexUsageStatus.app"
 CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
-VERSION="${VERSION:-0.1.0}"
+VERSION="${VERSION:-0.1.1}"
 CODESIGN_IDENTITY="${CODESIGN_IDENTITY:--}"
 MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-13.0}"
 BUNDLE_IDENTIFIER="${BUNDLE_IDENTIFIER:-io.github.codexusagestatus.app}"
@@ -54,9 +54,10 @@ if [[ ! -x "$BINARY_PATH" ]]; then
 fi
 
 rm -rf "$APP_DIR"
-mkdir -p "$MACOS_DIR"
+mkdir -p "$MACOS_DIR" "$CONTENTS_DIR/Resources"
 
 cp "$BINARY_PATH" "$MACOS_DIR/CodexUsageStatus"
+cp "$ROOT_DIR/LICENSE" "$CONTENTS_DIR/Resources/LICENSE"
 
 cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>

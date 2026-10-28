@@ -64,7 +64,7 @@ enum CodexUsageFetcher {
                 throw FetchError.connectionClosed
             }
         }
-        try send(#"{"method":"initialize","id":1,"params":{"clientInfo":{"name":"codex_usage_status_menubar","title":"Codex Usage Status","version":"0.1.0"},"capabilities":{"experimentalApi":true}}}"#)
+        try send(#"{"method":"initialize","id":1,"params":{"clientInfo":{"name":"codex_usage_status_menubar","title":"Codex Usage Status","version":"0.1.1"},"capabilities":{"experimentalApi":true}}}"#)
         _ = try responses.wait(for: "1", until: deadline)
         try send(#"{"method":"initialized"}"#)
         try send(#"{"method":"account/rateLimits/read","id":2}"#)
